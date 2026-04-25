@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TensorAI 시계열 대시보드</title>
+  <meta name="description" content="Bybit 자동매매 봇 시계열 성과 대시보드 – EQUITY, PNL, MDD, 포지션 추이" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0c10;
+      --bg2: #0f1117;
+      --bg3: #161b24;
+      --border: rgba(255,255,255,0.07);
+      --text: #e6eaf2;
+      --text2: #8892a4;
+      --text3: #4b5568;
+      --accent: #3b82f6;
+      --accent2: #6366f1;
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --purple: #8b5cf6;
+      --glow: rgba(59,130,246,0.15);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(15,17,23,0.95);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-text { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo-sub { font-size: 12px; color: var(--text2); margin-top: 1px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .last-update {
+      font-size: 12px; color: var(--text2);
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 10px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500;
+      background: rgba(16,185,129,0.1);
+      color: var(--green); border: 1px solid rgba(16,185,129,0.25);
+      border-radius: 20px; padding: 4px 10px;
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Layout ── */
+    main { max-width: 1400px; margin: 0 auto; padding: 28px 24px 48px; }
+
+    /* ── Stat Cards ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover { border-color: rgba(255,255,255,0.14); transform: translateY(-2px); }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: var(--card-accent, linear-gradient(90deg, var(--accent), var(--accent2)));
+      border-radius: 14px 14px 0 0;
+    }
+    .card-label {
+      font-size: 11px; font-weight: 500; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--text2);
+      margin-bottom: 10px;
+    }
+    .card-value {
+      font-size: 22px; font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: -0.5px;
+    }
+    .card-sub {
+      font-size: 12px; color: var(--text2); margin-top: 5px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .pos { color: var(--green); }
+    .neg { color: var(--red); }
+    .neu { color: var(--text); }
+
+    /* ── Charts ── */
+    .section-title {
+      font-size: 13px; font-weight: 600; letter-spacing: 0.4px;
+      text-transform: uppercase; color: var(--text2);
+      margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::before {
+      content: '';
+      width: 3px; height: 14px;
+      background: linear-gradient(180deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+    }
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+      margin-bottom: 28px;
+    }
+    .chart-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .chart-card.wide { grid-column: 1 / -1; }
+    .chart-title {
+      font-size: 13px; font-weight: 600; color: var(--text2);
+      margin-bottom: 16px; letter-spacing: 0.2px;
+    }
+    .chart-wrap { position: relative; height: 220px; }
+    .chart-wrap.tall { height: 280px; }
+
+    /* ── Table ── */
+    .table-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .table-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    .table-title { font-size: 13px; font-weight: 600; color: var(--text2); }
+    .table-badge {
+      font-size: 11px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 3px 8px; color: var(--text2);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .table-wrap { overflow-x: auto; max-height: 380px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    thead th {
+      padding: 10px 16px; text-align: right;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.4px;
+      text-transform: uppercase; color: var(--text3);
+      background: var(--bg2); position: sticky; top: 0; z-index: 1;
+    }
+    thead th:first-child { text-align: left; }
+    tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tbody tr:hover { background: rgba(255,255,255,0.025); }
+    tbody td {
+      padding: 9px 16px; text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text);
+    }
+    tbody td:first-child { text-align: left; color: var(--text2); font-family: 'Inter', sans-serif; font-size: 12px; }
+
+    /* ── Loading ── */
+    #loading {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 60vh; gap: 16px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: var(--text2); font-size: 14px; }
+
+    #error-msg {
+      display: none; text-align: center; padding: 60px 24px;
+      color: var(--text2); font-size: 14px;
+    }
+    #dashboard { display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      header { padding: 14px 16px; }
+      main { padding: 16px 12px 40px; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-card.wide { grid-column: 1; }
+      .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">📈</div>
+    <div>
+      <div class="logo-text">TensorAI</div>
+      <div class="logo-sub">Bybit 시계열 대시보드</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="last-update" id="last-update">–</div>
+    <div class="status-pill"><span class="status-dot"></span>LIVE</div>
+  </div>
+</header>
+
+<main>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">데이터 불러오는 중…</div>
+  </div>
+  <div id="error-msg">❌ 데이터를 불러올 수 없습니다.<br><small>잠시 후 다시 시도해주세요.</small></div>
+
+  <div id="dashboard">
+    <!-- Stat Cards -->
+    <div class="section-title">최신 현황</div>
+    <div class="cards-grid" id="stat-cards"></div>
+
+    <!-- Charts -->
+    <div class="section-title">시계열 차트</div>
+    <div class="charts-grid">
+      <div class="chart-card wide">
+        <div class="chart-title">💰 TOTAL EQUITY 추이 (USDT)</div>
+        <div class="chart-wrap tall"><canvas id="chartEquity"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">📈 누적 PNL 추이 (미실현 포함, USDT)</div>
+        <div class="chart-wrap"><canvas id="chartCumPnl"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">📊 오늘 실현 PNL (USDT)</div>
+        <div class="chart-wrap"><canvas id="chartDailyPnl"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">🔀 포지션 수 (롱 / 숏)</div>
+        <div class="chart-wrap"><canvas id="chartPositions"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">🌱 시드 사용률 (%)</div>
+        <div class="chart-wrap"><canvas id="chartSeed"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">📉 MDD & CURRENT DD (%)</div>
+        <div class="chart-wrap"><canvas id="chartDD"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="section-title">기록 데이터 (최근 48개)</div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">시계열 로그</div>
+        <div class="table-badge" id="row-count">– rows</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>시각 (KST)</th>
+              <th>EQUITY</th>
+              <th>실현 PNL</th>
+              <th>누적 PNL</th>
+              <th>미실현</th>
+              <th>포지션</th>
+              <th>롱</th>
+              <th>숏</th>
+              <th>시드%</th>
+              <th>MDD%</th>
+              <th>DD%</th>
+            </tr>
+          </thead>
+          <tbody id="data-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const CSV_URL = './data/timeseries.csv';
+
+/* ── Helpers ── */
+const fmt = (v, d = 2) => Number(v).toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = v => Number(v) >= 0 ? `+${fmt(v)}%` : `${fmt(v)}%`;
+const cls = v => Number(v) > 0 ? 'pos' : Number(v) < 0 ? 'neg' : 'neu';
+
+/* ── Chart defaults ── */
+Chart.defaults.color = '#8892a4';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = 'Inter';
+
+const baseDataset = {
+  borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+  tension: 0.4, fill: true,
+};
+
+function makeGrad(ctx, color1, color2 = 'transparent') {
+  const g = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
+  g.addColorStop(0, color1);
+  g.addColorStop(1, color2);
+  return g;
+}
+
+function timeChart(id, label, data, labels, color, { negative } = {}) {
+  const canvas = document.getElementById(id);
+  const ctx = canvas.getContext('2d');
+  const grad = makeGrad(ctx, color + '33', color + '05');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ label, data, borderColor: color, backgroundColor: grad, ...baseDataset }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: t => ` ${fmt(t.raw)}`
+      }}},
+      scales: {
+        x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'MM/dd HH시' }},
+             ticks: { maxTicksLimit: 8, font: { size: 10 }}},
+        y: { ticks: { font: { size: 10 }, callback: v => fmt(v, 1) },
+             grid: { color: 'rgba(255,255,255,0.05)' }}
+      }
+    }
+  });
+}
+
+function stackedBarChart(id, labels, longData, shortData) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '롱', data: longData, backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 3 },
+        { label: '숏', data: shortData, backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 3 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 10 }}},
+      scales: {
+        x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'MM/dd HH시' }},
+             stacked: true, ticks: { maxTicksLimit: 8, font: { size: 10 }}},
+        y: { stacked: true, ticks: { font: { size: 10 }, stepSize: 1 },
+             grid: { color: 'rgba(255,255,255,0.05)' }}
+      }
+    }
+  });
+}
+
+function dualLineChart(id, labels, d1, d2) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'MDD', data: d1, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', ...baseDataset },
+        { label: 'Current DD', data: d2, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.07)', ...baseDataset, borderDash: [4, 3] },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: true, position: 'top', labels: { font: { size: 11 }, boxWidth: 10 }}},
+      scales: {
+        x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'MM/dd HH시' }},
+             ticks: { maxTicksLimit: 8, font: { size: 10 }}},
+        y: { ticks: { font: { size: 10 }, callback: v => v + '%' },
+             grid: { color: 'rgba(255,255,255,0.05)' }}
+      }
+    }
+  });
+}
+
+function barChart(id, label, labels, data, color) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label, data,
+        backgroundColor: data.map(v => v >= 0 ? color + 'BB' : '#ef4444BB'),
+        borderRadius: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: t => ` ${fmt(t.raw)} USDT`
+      }}},
+      scales: {
+        x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'MM/dd HH시' }},
+             ticks: { maxTicksLimit: 8, font: { size: 10 }}},
+        y: { ticks: { font: { size: 10 }}, grid: { color: 'rgba(255,255,255,0.05)' }}
+      }
+    }
+  });
+}
+
+/* ── Stat Cards ── */
+function renderCards(latest) {
+  const cumPnl = parseFloat(latest.cum_pnl_with_unrealized);
+  const cards = [
+    {
+      label: 'TOTAL EQUITY', accent: 'linear-gradient(90deg,#3b82f6,#6366f1)',
+      value: `$${fmt(latest.equity)}`,
+      sub: 'USDT',
+    },
+    {
+      label: '오늘 실현 PNL', accent: `linear-gradient(90deg,${parseFloat(latest.daily_pnl)>=0?'#10b981,#059669':'#ef4444,#dc2626'})`,
+      value: `${parseFloat(latest.daily_pnl)>=0?'+':''}${fmt(latest.daily_pnl)}`,
+      valueClass: cls(latest.daily_pnl),
+      sub: 'USDT',
+    },
+    {
+      label: '누적 PNL (미실현↑)', accent: `linear-gradient(90deg,${cumPnl>=0?'#10b981,#059669':'#ef4444,#dc2626'})`,
+      value: `${cumPnl>=0?'+':''}${fmt(cumPnl)}`,
+      valueClass: cls(cumPnl),
+      sub: `실현 ${fmt(latest.total_pnl)} / 미실현 ${fmt(latest.unrealized)}`,
+    },
+    {
+      label: '포지션 수', accent: 'linear-gradient(90deg,#8b5cf6,#6366f1)',
+      value: `${latest.position_count}개`,
+      sub: `롱 ${latest.long_count} / 숏 ${latest.short_count}`,
+    },
+    {
+      label: '시드 사용률', accent: 'linear-gradient(90deg,#f59e0b,#d97706)',
+      value: `${fmt(latest.seed_used_pct, 1)}%`,
+      sub: `$${fmt(latest.seed_used)} USDT 사용`,
+    },
+    {
+      label: 'MDD', accent: 'linear-gradient(90deg,#ef4444,#dc2626)',
+      value: `${fmt(latest.mdd, 2)}%`,
+      valueClass: 'neg',
+      sub: '최대 낙폭',
+    },
+    {
+      label: 'CURRENT DD', accent: `linear-gradient(90deg,${parseFloat(latest.current_dd)<=0?'#f59e0b,#d97706':'#10b981,#059669'})`,
+      value: `${fmt(latest.current_dd, 2)}%`,
+      valueClass: cls(latest.current_dd),
+      sub: '현재 낙폭',
+    },
+  ];
+
+  document.getElementById('stat-cards').innerHTML = cards.map(c => `
+    <div class="card" style="--card-accent:${c.accent}">
+      <div class="card-label">${c.label}</div>
+      <div class="card-value ${c.valueClass||''}">${c.value}</div>
+      <div class="card-sub">${c.sub||''}</div>
+    </div>
+  `).join('');
+}
+
+/* ── Table ── */
+function renderTable(rows) {
+  const recent = [...rows].reverse().slice(0, 48);
+  document.getElementById('row-count').textContent = `총 ${rows.length}개`;
+  document.getElementById('data-table').innerHTML = recent.map(r => `
+    <tr>
+      <td>${r.timestamp_kst}</td>
+      <td>${fmt(r.equity)}</td>
+      <td class="${cls(r.daily_pnl)}">${parseFloat(r.daily_pnl)>=0?'+':''}${fmt(r.daily_pnl)}</td>
+      <td class="${cls(r.cum_pnl_with_unrealized)}">${parseFloat(r.cum_pnl_with_unrealized)>=0?'+':''}${fmt(r.cum_pnl_with_unrealized)}</td>
+      <td class="${cls(r.unrealized)}">${parseFloat(r.unrealized)>=0?'+':''}${fmt(r.unrealized)}</td>
+      <td>${r.position_count}</td>
+      <td class="pos">${r.long_count}</td>
+      <td class="neg">${r.short_count}</td>
+      <td>${fmt(r.seed_used_pct, 1)}%</td>
+      <td class="neg">${fmt(r.mdd, 2)}%</td>
+      <td class="${cls(r.current_dd)}">${fmt(r.current_dd, 2)}%</td>
+    </tr>
+  `).join('');
+}
+
+/* ── Main ── */
+async function loadData() {
+  try {
+    const res = await fetch(CSV_URL + '?t=' + Date.now());
+    if (!res.ok) throw new Error(res.status);
+    const text = await res.text();
+    const { data } = Papa.parse(text.trim(), { header: true, skipEmptyLines: true });
+    if (!data.length) throw new Error('empty');
+
+    const labels = data.map(r => new Date(r.timestamp_kst.replace(' ', 'T') + '+09:00'));
+    const g = k => data.map(r => parseFloat(r[k]));
+
+    const latest = data[data.length - 1];
+    document.getElementById('last-update').textContent =
+      '업데이트: ' + latest.timestamp_kst;
+
+    renderCards(latest);
+    renderTable(data);
+
+    timeChart('chartEquity',  'EQUITY',        g('equity'),                 labels, '#3b82f6');
+    timeChart('chartCumPnl',  '누적PNL(미실현↑)', g('cum_pnl_with_unrealized'), labels, '#10b981');
+    barChart( 'chartDailyPnl','오늘 실현 PNL',  labels, g('daily_pnl'),          '#10b981');
+    stackedBarChart('chartPositions', labels, g('long_count'), g('short_count'));
+    barChart( 'chartSeed',    '시드 사용률',    labels, g('seed_used_pct'),       '#f59e0b');
+    dualLineChart('chartDD', labels, g('mdd'), g('current_dd'));
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+  } catch (e) {
+    console.error(e);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'block';
+  }
+}
+
+loadData();
+// 30분마다 자동 새로고침
+setInterval(loadData, 30 * 60 * 1000);
+</script>
+</body>
+</html>
