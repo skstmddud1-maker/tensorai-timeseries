@@ -1,0 +1,2 @@
+# This file keeps the data/ directory tracked in git.
+# timeseries.csv will be created here by the GitHub Actions workflow.
