@@ -61,7 +61,7 @@ def extract_row(data: dict, timestamp_kst: str) -> dict:
         "daily_pnl": data.get("daily_pnl", ""),
         "total_pnl": total_pnl,
         "unrealized": unrealized,
-        "cum_pnl_with_unrealized": round(total_pnl + unrealized, 4),
+        "cum_pnl_with_unrealized": total_pnl,  # total_pnl이 이미 미실현 포함 최종 누적 PNL
         "position_count": long_count + short_count,
         "long_count": long_count,
         "short_count": short_count,
@@ -116,7 +116,7 @@ def main():
     print(f"     오늘 실현 PNL : {row['daily_pnl']:>12} USDT")
     print(f"     누적 PNL      : {row['total_pnl']:>12} USDT")
     print(f"     미실현 PNL    : {row['unrealized']:>12} USDT")
-    print(f"     누적(미실현↑) : {row['cum_pnl_with_unrealized']:>12} USDT")
+    print(f"     누적 PNL(최종) : {row['cum_pnl_with_unrealized']:>12} USDT")
     print(f"     포지션        : {row['position_count']}개 (롱 {row['long_count']} / 숏 {row['short_count']})")
     print(f"     시드 사용률   : {row['seed_used_pct']:>11}%")
     print(f"     MDD           : {row['mdd']:>12}%")

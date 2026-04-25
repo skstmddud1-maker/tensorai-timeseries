@@ -462,10 +462,10 @@ function renderCards(latest) {
       sub: 'USDT',
     },
     {
-      label: '누적 PNL (미실현↑)', accent: `linear-gradient(90deg,${cumPnl>=0?'#10b981,#059669':'#ef4444,#dc2626'})`,
+      label: '누적 PNL (미실현 포함)', accent: `linear-gradient(90deg,${cumPnl>=0?'#10b981,#059669':'#ef4444,#dc2626'})`,
       value: `${cumPnl>=0?'+':''}${fmt(cumPnl)}`,
       valueClass: cls(cumPnl),
-      sub: `실현 ${fmt(latest.total_pnl)} / 미실현 ${fmt(latest.unrealized)}`,
+      sub: `미실현: ${parseFloat(latest.unrealized)>=0?'+':''}${fmt(latest.unrealized)} USDT`,
     },
     {
       label: '포지션 수', accent: 'linear-gradient(90deg,#8b5cf6,#6366f1)',
@@ -541,7 +541,7 @@ async function loadData() {
     renderTable(data);
 
     timeChart('chartEquity',  'EQUITY',        g('equity'),                 labels, '#3b82f6');
-    timeChart('chartCumPnl',  '누적PNL(미실현↑)', g('cum_pnl_with_unrealized'), labels, '#10b981');
+    timeChart('chartCumPnl',  '누적PNL(미실현포함)', g('cum_pnl_with_unrealized'), labels, '#10b981');
     barChart( 'chartDailyPnl','오늘 실현 PNL',  labels, g('daily_pnl'),          '#10b981');
     stackedBarChart('chartPositions', labels, g('long_count'), g('short_count'));
     barChart( 'chartSeed',    '시드 사용률',    labels, g('seed_used_pct'),       '#f59e0b');
